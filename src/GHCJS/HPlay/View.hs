@@ -102,18 +102,18 @@ module GHCJS.HPlay.View(
 )  where
 
 
-import           Transient.Internals     hiding (input, option)
+import           Transient.Internals     hiding ((!>),input, option)
 import           Transient.Logged
 import           Transient.Move.Utils
 
-import           Control.Concurrent.MVar
+
 import           Control.Monad.State
 import qualified Data.Map                as M
 
 import           Control.Applicative
 import           Control.Concurrent
 import           Data.Dynamic
-import           Data.IORef
+
 import           Data.Maybe
 import           Data.Monoid
 import           Data.Typeable
@@ -205,10 +205,18 @@ data NeedForm= HasForm | HasElems  | NoElems deriving Show
 
 
 type ElemID= JSString
-newtype Widget a=  Widget{ norender :: TransientIO a} deriving(Monad,Alternative,MonadIO,MonadPlus)
+newtype Widget a=  Widget{ norender :: TransIO a} deriving(Monad,MonadIO,Alternative,MonadPlus)
 
 instance   Functor Widget where
   fmap f mx=   Widget. Transient $ fmap (fmap f) . runTrans $ norender mx
+
+--instance Alternative Widget where
+--   empty= Widget empty
+--   (Widget x) <|> (Widget y)=  Widget $ Transient $ do
+--            rx <- runTrans x
+--            ry <- runTrans y
+--            return $ rx <|> ry
+
 
 instance Applicative Widget where
   pure= return
@@ -217,6 +225,8 @@ instance Applicative Widget where
       mx <- x --  !> "mx"
       my <- y --  !> "my"
       return $ mx <*> my
+
+
 
 instance Monoid a => Monoid (Widget a) where
   mempty= return mempty
@@ -1117,7 +1127,7 @@ raiseEvent w event = Widget . Transient $ do
        let iohandler :: EventData -> IO ()
            iohandler eventdata =do
                 runStateT (setData eventdata >> runCont' cont) cont   -- !!> "runCont INIT"
-                return ()                                             -- !!> "runCont finished"
+                return ()                                           -- !!> "runCont finished"
        runView $ addEvent event iohandler <<< w
 --   return r
    where
@@ -1188,7 +1198,7 @@ runWidgetId' ac id1=  Transient  runWidget1
  where
  runWidget1 = do
 
-   me <- liftIO $ elemById id1                      --    !> ("RUNWIDGETID", id1)
+   me <- liftIO $ elemById id1                       --   !> ("RUNWIDGETID", id1)
    case me of
      Just e ->  do
 
@@ -1270,7 +1280,6 @@ runBody w= do
 render :: Widget a -> TransIO a
 #ifdef ghcjs_HOST_OS
 render  mx =  do
-
        id1 <- Transient $ do
                  me <- getData              -- !> "RENDER"
                  case me of
@@ -1288,28 +1297,29 @@ render  mx =  do
 
   where
   mx' id2= Widget $ do
-     r <- norender mx                           -- !> "mx"
+     r <- norender mx                                    --    !> "mx"
      addPrefix
-     (setData $ IdLine id2)            -- !!> show ("set",id2)
+     (setData $ IdLine id2)          --   !>  ("set",id2)
 
      do
            re <- getSData        -- succed if is the result of an event
-           case re    of                                               -- !>  "event" of
+           case re   of                                           --    !>  "event" of
              Repeat -> do
               me <- liftIO $ elemById id2
               case me of
-                 Just e ->  (liftIO $ clearChildren e)             --   !> show ("clear1",id2)
+                 Just e ->   (liftIO $ clearChildren e)          --      !> show ("clear1",id2)
                  Nothing -> return ()
-              setData $ RepH id2
+--              setData $ RepH id2
+              delData Repeat
               delData noHtml
              RepH  idx -> do
-               me <- liftIO $ elemById idx
-               case me of
-                 Just e ->  (liftIO $ clearChildren e)             --   !> show ("clear2",idx)
-                 Nothing -> return ()
-               delData Repeat
+--               me <- liftIO $ elemById idx
+--               case me of
+--                 Just e ->   (liftIO $ clearChildren e)         --       !> show ("clear2",idx)
+--                 Nothing -> return ()
+               delData Repeat                                    --     !> "deldata Repeat"
            return r
-        <|> return r                                                 -- !!> "NO DEL"
+        <|> return r                                             --     !> "NO DEL"
 
 
 #else
